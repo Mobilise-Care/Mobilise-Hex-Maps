@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Map</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.12.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.12.0/mapbox-gl.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: white;
+            z-index: 1000;
+            padding: 20px;
+            max-width: 50%;
+            box-shadow: 0 4px 8px 0 rgb(0 0 0 / 20%), 0 6px 20px 0 rgb(0 0 0 / 19%);
+        }
+
+        #clear {
+            position: absolute;
+            top: 60px;
+            left: 20px;
+            background-color: white;
+            z-index: 1000;
+        }
+
+        #autocomplete {
+            z-index: 100;
+            position: absolute;
+            top: 10px;
+            left: 20px;
+            box-sizing: border-box;
+            padding: 10px;
+        }
+
+        .legend {
+            display: flex;
+            align-items: center;
+        }
+
+        .hex {
+            color: #a0cce7;
+            font-size: 30px;
+            transform: rotate(90deg);
+            margin-right: 10px;
+
+        }
+
+
+        .switcher-div {
+            display: flex;
+            align-items: center;
+            margin-right: 5px;
+            margin-top: 10px;
+        }
+
+        .switcher-div>div {
+            margin-left: 5px;
+        }
+
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 35px;
+            height: 15px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            -webkit-transition: 0.4s;
+            transition: 0.4s;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 11px;
+            width: 11px;
+            left: 3px;
+            bottom: 2px;
+            background-color: white;
+            -webkit-transition: 0.4s;
+            transition: 0.4s;
+        }
+
+        input:checked+.slider {
+            background-color: #2196f3;
+        }
+
+        input:focus+.slider {
+            box-shadow: 0 0 1px #2196f3;
+        }
+
+        input:checked+.slider:before {
+            -webkit-transform: translateX(18px);
+            -ms-transform: translateX(18px);
+            transform: translateX(18px);
+        }
+
+        /* Rounded sliders */
+        .slider.round {
+            border-radius: 34px;
+        }
+
+        .slider.round:before {
+            border-radius: 50%;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="info">
+        <div class="legend">
+            <div class="hex" style="color:#ff93bc">&#x2B22;</div>
+            In contract
+        </div>
+        <div class="legend">
+            <div class="hex" style="color:#FFEBF2">&#x2B22;</div>
+            Previously in contract
+        </div>
+        <div class="legend">
+            <div class="hex" style="color:#449dd1">&#x2B22;</div>
+            No contract
+        </div>
+
+    </div>
+    <div id="map"></div>
+
+    <script>
+
+        const cellSide = 12;
+        const wales = [919, 880, 881, 882, 883, 884, 885, 845, 844, 843, 842, 841, 802, 762, 801, 840, 879, 924, 722, 805, 806, 920]
+        const nIreland = [534, 574, 573, 614, 613, 612, 652, 653, 651, 691, 533]
+        const scotland = [891, 931, 971, 972, 933, 932, 892, 852, 813, 812, 853, 893, 894, 814, 815, 855, 854, 895, 851, 896, 856, 816, 777, 857, 817, 897, 936, 976, 937, 772, 858, 935]
+        const england = [717, 677, 716, 757, 758, 798, 797, 836, 837, 838, 877, 878, 916, 876, 917, 918, 958, 957, 956, 995, 996, 997, 998, 959, 960, 921, 922, 923, 963, 964, 925, 965, 926, 927, 967, 928, 889, 890, 930, 970, 1010, 1050, 1011, 1049, 1009, 1048, 1087, 1126, 1165, 1164, 1163, 1201, 1202, 1200, 1199, 1239, 1279, 1318, 1317, 1316, 1276, 1275, 1236, 1235, 1234, 1273, 1313, 1233, 1193, 1154, 1114, 1074, 1035, 1036, 1075, 1115, 1194, 1195, 1116, 1155, 1076, 1037, 1038, 999, 961, 962, 1001, 1000, 1039, 1078, 1077, 1156, 1196, 1117, 1157, 1197, 1237, 1277, 1278, 1238, 1198, 1118, 1079, 1158, 1159, 1119, 1080, 1040, 1041, 1002, 1003, 1004, 1005, 966, 1006, 1046, 1086, 1123, 1121, 1162, 1161, 1120, 1160, 1042, 1082, 1122, 1083, 1043, 1044, 1084, 1124, 1125, 1085, 1045, 1047, 1007, 1008, 968, 969, 929, 1274, 1051, 1088, 1315, 955, 875, 1272, 1081, 888, 1357, 1356, 637]
+        const main = new Set([...england, ...wales, ...nIreland, ...scotland])
+
+        const infoDiv = document.getElementById("info")
+        const clearButton = document.getElementById("clear")
+        const switchersEnableDiv = document.getElementById("info")
+
+        mapboxgl.accessToken = 'pk.eyJ1IjoiaHVuZ3VuY2hhaW5lZCIsImEiOiJjbDFieGZyMDgwMjR3M2twMmJ1bTdlZW5wIn0.dQYKVbIDvcw65XPddVznCg';
+        const map = new mapboxgl.Map({
+            container: 'map',
+            zoom: 5.3,
+            center: { lng: -3.375524309047023, lat: 54.74094135942198 },
+            style: 'mapbox://styles/mapbox/empty-v8',
+            projection: 'mercator'
+        });
+
+        map.on("load", () => {
+
+            map.addSource('cell', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'FeatureCollection',
+                    'features': []
+                }
+            });
+            map.addLayer({
+                'id': 'cell-fills',
+                'type': 'fill',
+                'source': 'cell',
+                'layout': {},
+                'paint': {
+                    'fill-color': ['get', 'color'],
+                    'fill-opacity': 0.5
+                }
+            });
+
+            map.addLayer({
+                'id': 'points',
+                'type': 'symbol',
+                'source': 'cell',
+                'layout': {
+                    'visibility': 'visible',
+                    'text-field': ['get', 'name'],
+                    'text-font': [
+                        'Open Sans Semibold',
+                        'Arial Unicode MS Bold'
+                    ],
+                    'text-offset': [0, 0],
+                    'text-size': 10
+                }
+            });
+
+            map.addSource('bbox', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'FeatureCollection',
+                    'features': []
+                }
+            });
+
+            map.addLayer({
+                'id': 'bbox-fills',
+                'type': 'fill',
+                'source': 'bbox',
+                'layout': {},
+                'paint': {
+                    'fill-color': ['get', 'color'],
+                    'fill-opacity': 0.8
+                }
+            });
+
+            const bbox = [-13.768725173131173, 48.14922907730417, 4.152353320061422, 60.458201037621535]
+            const options = { units: 'miles' };
+            const polys = turf.hexGrid(bbox, cellSide, options)
+            polys.features.forEach((d, key) => {
+                d.properties.hexId = key
+            })
+            const hexgrid = turf.featureCollection(polys.features.filter(p => {
+                return main.has(p.properties.hexId)
+            }))
+
+
+            d3.csv("https://docs.google.com/spreadsheets/d/e/2PACX-1vT_K8nXmOx3zql6mMxwG0SIHfJixpqRDs6egnR0fv_BJTe-fnn_MBuvwuLc2QBCfIwnk5TqzeED4i3K/pub?output=csv")
+                .then(d => {
+                    hexgrid.features.map(cell => {
+                        const city = d.find(item => item.hexArray.includes(cell.properties.hexId));
+                        const color = city ? city.colour : "gray"
+                        cell.properties.color = color
+                        cell.properties.name = city.name
+                    })
+                    map.getSource("cell").setData(hexgrid)
+                })
+
+
+            switchersEnableDiv.appendChild(buildSwitcher("text", checked => {
+                const visibility = checked ? "visible" : "none"
+                map.setLayoutProperty("points", "visibility", visibility)
+            }, true))
+
+        })
+
+        function buildSwitcher(labelText, action, checked = true) {
+
+            const div = document.createElement("div")
+            div.className = "switcher-div"
+
+            const label = document.createElement("label")
+            label.className = "switch"
+
+            const checkbox = document.createElement("input")
+            checkbox.type = "checkbox"
+            checkbox.className = "checkbox"
+            checkbox.checked = checked
+            checkbox.addEventListener("input", () => {
+                if (typeof action === "function") {
+                    action(checkbox.checked)
+                }
+            })
+
+            const span = document.createElement("span")
+            span.className = "slider round"
+
+            const text = document.createElement("div")
+            text.innerText = labelText
+
+            label.appendChild(checkbox)
+            label.appendChild(span)
+
+            div.appendChild(label)
+            div.appendChild(text)
+
+            return div
+        }
+
+    </script>
+
+
+</body>
+
+</html>
